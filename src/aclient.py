@@ -19,12 +19,24 @@ prompt_path = os.path.join(config_dir, prompt_name)
 with open(prompt_path, "r", encoding="utf-8") as f:
     prompt = f.read()
 
+async def whitelist_checks(interaction: discord.Interaction):
+    if not client.whitelisted_guilds or interaction.guild_id in client.whitelisted_guilds:
+        if not client.whitelisted_channels or interaction.channel_id == client.replying_all_discord_channel_id or interaction.channel_id in client.whitelisted_channels:
+            return True
+        else:
+            await interaction.response.send_message("> **ERROR: Channel not whitelisted**")
+    else:
+        await interaction.response.send_message("> **ERROR: Guild not whitelisted**")
+    logger.warning(f"an attempt was made to use the bot in channel {interaction.channel_id}, which was not in the whitelist")
+    return False
+
 class aclient(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
+        self.tree.interaction_check = whitelist_checks
         self.activity = discord.Activity(type=discord.ActivityType.listening, name="/chat | /help")
         self.isPrivate = False
         self.is_replying_all = os.getenv("REPLYING_ALL")
@@ -40,6 +52,17 @@ class aclient(discord.Client):
         self.chat_model = os.getenv("CHAT_MODEL")
         self.chatbot = self.get_chatbot_model()
         self.message_queue = asyncio.Queue()
+
+        whitelisted_guilds_str = os.getenv("WHITELISTED_GUILDS")
+        self.whitelisted_guilds = [int(guild) for guild in whitelisted_guilds_str.split(", ")] if whitelisted_guilds_str != "" else None
+        whitelisted_channels_str = os.getenv("WHITELISTED_CHANNELS")
+        self.whitelisted_channels = [int(channel) for channel in os.getenv("WHITELISTED_CHANNELS").split(", ")] if whitelisted_channels_str != "" else None
+
+        if self.whitelisted_guilds:
+            logger.info(f"setting whitelisted guilds to {self.whitelisted_guilds}")
+
+        if self.whitelisted_channels:
+            logger.info(f"setting whitelisted channels to {self.whitelisted_channels}")
 
     def get_chatbot_model(self, prompt=prompt) -> Union[AsyncChatbot, Chatbot]:
         if self.chat_model == "UNOFFICIAL":
